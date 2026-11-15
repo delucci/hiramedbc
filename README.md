@@ -1,5 +1,7 @@
 # HirameDBC
 
+**English** | [日本語](README.ja.md)
+
 A CLI that runs the official MySQL Docker image as disposable containers, so you can switch between multiple versions of the MySQL client tools (`mysql` / `mysqldump`). Works on macOS and Windows.
 
 - No local MySQL client installation required.
