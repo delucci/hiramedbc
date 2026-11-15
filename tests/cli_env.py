@@ -12,6 +12,8 @@ from hiramedbc.secrets.keychain import Keychain
 from tests.conftest import MemoryKeyring, ScriptedPrompter
 from tests.fake_docker import FakeDocker
 
+OUTPUT_WIDTH = 10_000
+
 
 class CliEnv:
     def __init__(self, tmp_path: Path, monkeypatch) -> None:
@@ -25,11 +27,12 @@ class CliEnv:
         self.docker = FakeDocker().install(monkeypatch)
         self.docker.respond("image inspect", stdout="arm64")
         self.prompter = ScriptedPrompter()
-        # Widen the output so tables do not wrap
+        # Widen the output so tables and messages never wrap. Messages can contain long temp paths
+        # (especially on Windows), and a wrap in the middle of a phrase breaks substring assertions.
         from hiramedbc.utils import console as out
 
-        monkeypatch.setattr(out.console, "_width", 200)
-        monkeypatch.setattr(out.err_console, "_width", 200)
+        monkeypatch.setattr(out.console, "_width", OUTPUT_WIDTH)
+        monkeypatch.setattr(out.err_console, "_width", OUTPUT_WIDTH)
         # CliRunner's stdin is not a terminal, so treat runs as "from a terminal" by default
         monkeypatch.setattr("hiramedbc.commands.common.stdin_is_terminal", lambda: True)
 
