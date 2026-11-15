@@ -1,0 +1,31 @@
+{
+  "connections": {
+    "development": {
+      "host": "dev-db.example.com",
+      "port": 3306,
+      "user": "app_user",
+      "password": "keyring",
+      "version": "8.0"
+    },
+    "staging": {
+      "host": "stg-db.example.com",
+      "port": 3306,
+      "user": "",
+      "password": ""
+    },
+    "production": {
+      "host": "prod-db.example.com",
+      "port": 3306,
+      "user": "",
+      "password": "",
+      "version": "8.4",
+      "ssl": {
+        "mode": "VERIFY_IDENTITY",
+        "ca": "/path/to/ca.pem"
+      }
+    }
+  },
+  "defaults": {
+    "version": "8.4"
+  }
+}

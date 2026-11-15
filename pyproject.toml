@@ -1,0 +1,49 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "hiramedbc"
+version = "0.1.0"
+description = "A CLI for switching between MySQL client versions using the official MySQL Docker image"
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+requires-python = ">=3.12"
+dependencies = [
+    "typer>=0.29,<1",
+    "rich>=13",
+    "pydantic>=2.7,<3",
+    "platformdirs>=4",
+    "keyring>=25",
+]
+classifiers = [
+    "Environment :: Console",
+    "Operating System :: MacOS",
+    "Operating System :: Microsoft :: Windows",
+    "Programming Language :: Python :: 3",
+    "Topic :: Database",
+]
+
+[project.scripts]
+hirame = "hiramedbc.cli:app"
+
+[dependency-groups]
+dev = ["pytest>=8", "ruff>=0.6"]
+
+[tool.hatch.build.targets.sdist]
+include = ["src/hiramedbc", "tests", "config/config.example.json", "README.md", "LICENSE", "pyproject.toml"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/hiramedbc"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"
+
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]

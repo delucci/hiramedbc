@@ -1,0 +1,13 @@
+# Local config used during development via HIRAMEDBC_CONFIG
+/config/config.json
+
+.venv/
+__pycache__/
+.pytest_cache/
+build/
+dist/
+*.egg-info/
+.coverage
+
+# Design notes for Claude (kept local only)
+/docs/claude/**/*.md

@@ -1,0 +1,44 @@
+name: Publish to PyPI
+
+on:
+  push:
+    tags: ["v*"]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - name: Check that the tag matches the package version
+        shell: bash
+        run: |
+          version="$(uv version --short)"
+          if [ "v${version}" != "${GITHUB_REF_NAME}" ]; then
+            echo "Tag ${GITHUB_REF_NAME} does not match version ${version} in pyproject.toml" >&2
+            exit 1
+          fi
+      # Run the tests before publishing (a tag can point at any commit)
+      - run: uv sync --locked
+      - run: uv run pytest
+      - run: uv build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    # Register a Trusted Publisher on PyPI first (this repository, this workflow, environment: pypi)
+    environment: pypi
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+      - uses: pypa/gh-action-pypi-publish@release/v1
