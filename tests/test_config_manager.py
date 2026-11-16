@@ -25,11 +25,8 @@ def test_uses_user_config_directory_when_neither_is_set():
     assert (location.path, location.source) == (default_config_path(), "default")
 
 
-def test_user_config_directory_contains_hiramedbc_only_once():
-    path = default_config_path()
-    assert path.name == "config.json"
-    assert path.parent.name == "hiramedbc"
-    assert path.parent.parent.name != "hiramedbc"
+def test_default_config_path_is_dotdir_under_home():
+    assert default_config_path() == Path.home() / ".hiramedbc" / "config.json"
 
 
 def test_missing_config_at_default_location_hints_init(tmp_path):
