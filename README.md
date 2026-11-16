@@ -109,7 +109,7 @@ For both the username and the password, you can choose either "saved" or "ask ev
 |---|---|
 | 1 | `--config <PATH>` |
 | 2 | The `HIRAMEDBC_CONFIG` environment variable |
-| 3 | macOS: `~/Library/Application Support/hiramedbc/config.json`<br>Windows: `%LOCALAPPDATA%\hiramedbc\config.json` |
+| 3 | `~/.hiramedbc/config.json` (Windows: `%USERPROFILE%\.hiramedbc\config.json`) |
 
 ```json
 {
