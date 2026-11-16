@@ -1,6 +1,6 @@
 """Resolve the config file location, and read and write it.
 
-Precedence: `--config` > `HIRAMEDBC_CONFIG` environment variable > user config directory.
+Precedence: `--config` > `HIRAMEDBC_CONFIG` environment variable > `~/.hiramedbc/config.json`.
 Project-local config files are not searched for automatically.
 """
 
@@ -11,8 +11,6 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
-
-import platformdirs
 
 from hiramedbc import APP_NAME
 from hiramedbc.config.schema import AppConfig
@@ -28,13 +26,13 @@ ConfigSource = Literal["option", "env", "default"]
 SOURCE_LABELS: dict[ConfigSource, str] = {
     "option": "--config option",
     "env": f"{ENV_VAR} environment variable",
-    "default": "user config directory",
+    "default": "default config location",
 }
 
 
 def default_config_path() -> Path:
-    # appauthor=False: avoid a doubled hiramedbc\hiramedbc path on Windows
-    return Path(platformdirs.user_config_dir(APP_NAME, appauthor=False)) / CONFIG_FILENAME
+    # Same dotdir on every OS so the path is predictable and easy to document
+    return Path.home() / f".{APP_NAME}" / CONFIG_FILENAME
 
 
 @dataclass(frozen=True)
