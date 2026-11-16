@@ -111,7 +111,7 @@ hirame doctor --pull 5.7 8.4      # 指定したバージョンを取得
 |---|---|
 | 1 | `--config <PATH>` |
 | 2 | 環境変数 `HIRAMEDBC_CONFIG` |
-| 3 | macOS: `~/Library/Application Support/hiramedbc/config.json`<br>Windows: `%LOCALAPPDATA%\hiramedbc\config.json` |
+| 3 | `~/.hiramedbc/config.json`（Windows: `%USERPROFILE%\.hiramedbc\config.json`） |
 
 ```json
 {

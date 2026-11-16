@@ -14,7 +14,6 @@ dependencies = [
     "typer>=0.29,<1",
     "rich>=13",
     "pydantic>=2.7,<3",
-    "platformdirs>=4",
     "keyring>=25",
 ]
 classifiers = [
