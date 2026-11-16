@@ -114,7 +114,8 @@ class ConfigManager:
         target = self.path.resolve()
         text = json.dumps(config.to_json_dict(), ensure_ascii=False, indent=2) + "\n"
         try:
-            target.parent.mkdir(parents=True, exist_ok=True)
+            # 0700: a newly created ~/.hiramedbc should not be traversable by other users (ignored on Windows)
+            target.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
             self._write_atomic(target, text)
         except OSError as e:
             raise ConfigError(f"Cannot save config file {self.path}: {e.strerror or e}") from None

@@ -20,13 +20,25 @@ def test_uses_env_var_when_no_option(tmp_path):
     assert (location.path, location.source) == (tmp_path / "env.json", "env")
 
 
-def test_uses_user_config_directory_when_neither_is_set():
+def test_uses_default_location_when_neither_is_set(tmp_path, monkeypatch):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("USERPROFILE", str(tmp_path))
     location = resolve_config_location(None, env={})
     assert (location.path, location.source) == (default_config_path(), "default")
 
 
-def test_default_config_path_is_dotdir_under_home():
-    assert default_config_path() == Path.home() / ".hiramedbc" / "config.json"
+def test_default_config_path_is_dotdir_under_home(tmp_path, monkeypatch):
+    # HOME on POSIX, USERPROFILE on Windows
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("USERPROFILE", str(tmp_path))
+    assert default_config_path() == tmp_path / ".hiramedbc" / "config.json"
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX permissions only")
+def test_save_creates_new_config_directory_as_0700(tmp_path):
+    target = tmp_path / ".hiramedbc" / "config.json"
+    ConfigManager(ConfigLocation(target, "default")).save(AppConfig())
+    assert stat.S_IMODE(target.parent.stat().st_mode) == 0o700
 
 
 def test_missing_config_at_default_location_hints_init(tmp_path):
