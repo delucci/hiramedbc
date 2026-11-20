@@ -25,7 +25,7 @@ You do not need to install Python or git separately (uv provides Python). Docker
 
 ```bash
 uv tool install hiramedbc            # Install
-uv tool install hiramedbc==0.1.0     # Install a specific version
+uv tool install hiramedbc==0.1.1     # Install a specific version
 uv tool upgrade hiramedbc            # Upgrade
 uv tool uninstall hiramedbc          # Uninstall
 uvx --from hiramedbc hirame          # Run once without installing
@@ -156,7 +156,7 @@ uv run pytest                                   # Run tests
 uv run ruff check . && uv run ruff format --check .
 ```
 
-- Releases: Pushing a `v*` tag publishes to PyPI through GitHub Actions Trusted Publishing (no API token is stored in the repository).
+- Releases: Bump `version` in `pyproject.toml`, merge to main, then run the "Publish to PyPI" workflow from the Actions tab. It publishes through Trusted Publishing (no API token is stored in the repository) and then creates the `v<version>` tag and GitHub Release.
 
 ## License
 
