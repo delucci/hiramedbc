@@ -1,7 +1,7 @@
 import pytest
 
 from hiramedbc.config.schema import AppConfig, ConnectionConfig
-from hiramedbc.config.validator import find_plaintext_passwords, parse_config
+from hiramedbc.config.validator import parse_config
 from hiramedbc.utils.errors import ConfigError
 
 
@@ -13,7 +13,7 @@ def _raw(**conn):
 def test_empty_user_and_password_as_null_or_empty_string_mean_ask_every_time(empty):
     config = parse_config(_raw(user=empty, password=empty))
     conn = config.connections["prod"]
-    assert (conn.user_fixed, conn.password_fixed) == (False, False)
+    assert (conn.user_fixed, conn.password_store) == (False, "ask")
 
 
 def test_missing_user_and_password_keys_mean_ask_every_time():
@@ -31,11 +31,36 @@ def test_rejects_out_of_range_port(port):
         parse_config(_raw(port=port))
 
 
-def test_rejects_plaintext_password_without_including_value_in_error():
+def test_accepts_plaintext_password_in_config_file():
+    conn = parse_config(_raw(user="app", password="s3cr3t!")).connections["prod"]
+    assert (conn.password_store, conn.plaintext_password, conn.password_in_keychain) == ("config", "s3cr3t!", False)
+
+
+def test_keeps_leading_and_trailing_spaces_of_plaintext_password():
+    conn = parse_config(_raw(user="app", password=" pw ")).connections["prod"]
+    assert conn.plaintext_password == " pw "
+
+
+def test_rejects_non_string_password_without_including_value_in_error():
     with pytest.raises(ConfigError) as excinfo:
-        parse_config(_raw(user="app", password="s3cr3t!"))
-    assert "Plaintext passwords cannot be saved" in excinfo.value.message
-    assert "s3cr3t!" not in excinfo.value.message
+        parse_config(_raw(user="app", password=1234))
+    assert "connections.prod.password: Must be a string" in excinfo.value.message
+    assert "1234" not in excinfo.value.message
+
+
+def test_does_not_include_plaintext_password_in_repr():
+    conn = parse_config(_raw(user="app", password="s3cr3t!")).connections["prod"]
+    assert "s3cr3t!" not in repr(conn)
+
+
+def test_rejects_plaintext_password_with_ask_every_time_user():
+    with pytest.raises(ConfigError, match="A saved password requires a saved user name"):
+        parse_config(_raw(user="", password="s3cr3t!"))
+
+
+def test_json_dict_for_saving_keeps_plaintext_password():
+    data = ConnectionConfig(host="h", user="app", password="s3cr3t!").to_json_dict()
+    assert data["password"] == "s3cr3t!"
 
 
 def test_rejects_saved_password_with_ask_every_time_user():
@@ -45,7 +70,7 @@ def test_rejects_saved_password_with_ask_every_time_user():
 
 def test_accepts_saved_user_with_keyring_password():
     conn = parse_config(_raw(user="app", password="keyring")).connections["prod"]
-    assert (conn.user_fixed, conn.password_fixed) == (True, True)
+    assert (conn.user_fixed, conn.password_store, conn.plaintext_password) == (True, "keychain", None)
 
 
 def test_rejects_empty_host():
@@ -119,11 +144,6 @@ def test_json_dict_for_saving_outputs_empty_credentials_as_empty_strings():
     assert data == {"host": "h", "port": 3306, "user": "", "password": ""}
 
 
-def test_lists_connection_names_with_plaintext_passwords_without_values():
-    raw = {"connections": {"a": {"password": "secret"}, "b": {"password": "keyring"}, "c": {"password": ""}}}
-    assert find_plaintext_passwords(raw) == ["a"]
-
-
 def test_numeric_version_hints_to_write_it_as_string():
     with pytest.raises(ConfigError, match=r'Version must be a string \(for example "8\.4"\)'):
         parse_config(_raw(version=8.4))
@@ -148,11 +168,6 @@ def test_rejects_host_with_whitespace_or_control_characters(host):
 def test_rejects_boolean_port():
     with pytest.raises(ConfigError, match="Port must be an integer"):
         parse_config(_raw(port=True))
-
-
-@pytest.mark.parametrize("password", [1234, " keyring ", ["x"]])
-def test_detects_every_schema_rejected_password_as_plaintext(password):
-    assert find_plaintext_passwords({"connections": {"a": {"password": password}}}) == ["a"]
 
 
 def test_example_config_file_satisfies_schema():

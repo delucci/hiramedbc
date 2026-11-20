@@ -6,7 +6,7 @@ A CLI that runs the official MySQL Docker image as disposable containers, so you
 
 - No local MySQL client installation required.
 - Mix and match connections and MySQL versions freely (`hirame c 5.7 legacy` / `hirame c 8.4 production`).
-- Passwords never go in the config file. Store them in your OS keychain (macOS Keychain / Windows Credential Manager), or enter them each time you connect.
+- Choose where each password lives: enter it every time you connect, save it in the OS keychain (macOS Keychain / Windows Credential Manager), or save it in plaintext in the config file.
 - Credentials are never passed as command-line arguments or environment variables. They reach the container as a MySQL option file.
 
 > Install, upgrade, and uninstall with the **package name `hiramedbc`**. For everyday use, run the **command `hirame`**.
@@ -90,17 +90,20 @@ When connecting, `hirame` shows which version it uses and where it came from (ar
 
 ## Credentials
 
-For both the username and the password, you can choose either "saved" or "ask every time".
+The username is either "saved" or "ask every time". The password can be "ask every time", saved in the OS keychain, or saved in plaintext in the config file.
 
 | Username | Password | Typical use | Prompted on connect |
 |---|---|---|---|
+| Saved | Saved (config file) | Local development where you edit the password often | Nothing |
 | Saved | Saved (keychain) | Shared development account | Nothing |
 | Saved | Ask every time | You prefer not to store the password, or it rotates regularly | Password only |
 | Ask every time | Ask every time | Personal accounts, or issued temporary accounts | Both |
 
 - For production connections, you can choose not to save the password and enter it every time instead. When adding a connection, saving the password defaults to no.
 - To skip saved values for a single run, pass `--ask-user` (which also prompts for the password) or `--ask-password`.
-- `list` never shows password values. It only shows whether a password is stored in the keychain.
+- A password saved in the config file is stored in plaintext. Only use it on a machine where just you can read the file (on macOS the file is created with 0600 permissions; `hirame doctor` warns if others can read it).
+- To change a password saved in the config file, edit it with `hirame config edit` (or re-run `hirame edit`).
+- `list` never shows password values. It only shows where each password is stored (keychain / config file).
 - On macOS, the first keychain access shows a permission dialog. Choose "Always Allow". The dialog may appear again after uv updates Python.
 
 ## Config file
@@ -129,7 +132,7 @@ For both the username and the password, you can choose either "saved" or "ask ev
 | `host` | Required. The MySQL server host |
 | `port` | Defaults to `3306` |
 | `user` | A value means saved. Empty means ask every time |
-| `password` | `"keyring"` reads the password from the keychain. Empty means ask every time. **Plaintext passwords are not allowed** (they cause an error) |
+| `password` | Empty means ask every time. `"keyring"` reads the password from the keychain. Any other value is used as the password itself (plaintext). The literal password `keyring` therefore cannot be saved in the config file |
 | `version` | The MySQL version (image tag) for this connection |
 | `ssl` | Optional. `mode` (`DISABLED` / `PREFERRED` / `REQUIRED` / `VERIFY_CA` / `VERIFY_IDENTITY`) and `ca` / `cert` / `key` (paths on the host). Certificates are mounted into the container read-only |
 | `defaults.version` | The default version shared by all connections |

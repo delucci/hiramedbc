@@ -1,7 +1,8 @@
 """Config file schema.
 
 - An "empty" `user` / `password` (missing key, null, or empty string) is normalized to None.
-- `password` may only be empty or `"keyring"`. Plaintext passwords are rejected.
+- `password` is one of: empty (ask every time), `"keyring"` (saved in the OS keychain), or any other
+  string (saved in the config file as plaintext). The literal string `"keyring"` is therefore reserved.
 """
 
 import re
@@ -10,6 +11,10 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 KEYRING = "keyring"
+PASSWORD_STORE_ASK = "ask"
+PASSWORD_STORE_CONFIG = "config"
+PASSWORD_STORE_KEYCHAIN = "keychain"
+PasswordStore = Literal["ask", "config", "keychain"]
 DEFAULT_PORT = 3306
 
 SslMode = Literal["DISABLED", "PREFERRED", "REQUIRED", "VERIFY_CA", "VERIFY_IDENTITY"]
@@ -68,7 +73,7 @@ class ConnectionConfig(BaseModel):
     host: str = Field(min_length=1)
     port: int = Field(default=DEFAULT_PORT, ge=1, le=65535)
     user: str | None = None
-    password: Literal["keyring"] | None = None
+    password: str | None = Field(default=None, repr=False)
     version: str | None = None
     ssl: SslConfig | None = None
     # SSH tunnels (F-11) are reserved for a future release. A non-empty value is rejected as unsupported.
@@ -99,13 +104,11 @@ class ConnectionConfig(BaseModel):
     @field_validator("password", mode="before")
     @classmethod
     def _password(cls, value: Any) -> Any:
+        # Not stripped: leading/trailing spaces are part of a plaintext password
         value = _blank_to_none(value)
-        if value is None or value == KEYRING:
-            return value
-        raise ValueError(
-            "Plaintext passwords cannot be saved. "
-            'Leave it empty (ask every time) or set it to "keyring" (saved in the keychain)'
-        )
+        if value is not None and not isinstance(value, str):
+            raise ValueError("Must be a string")
+        return value
 
     @field_validator("version", mode="before")
     @classmethod
@@ -125,8 +128,8 @@ class ConnectionConfig(BaseModel):
         raise ValueError("SSH tunnels are not supported yet (planned for a future version)")
 
     @model_validator(mode="after")
-    def _user_required_for_keyring(self) -> "ConnectionConfig":
-        if self.user is None and self.password == KEYRING:
+    def _user_required_for_saved_password(self) -> "ConnectionConfig":
+        if self.user is None and self.password is not None:
             raise ValueError("A saved password requires a saved user name (passwords are saved per connection)")
         return self
 
@@ -135,8 +138,19 @@ class ConnectionConfig(BaseModel):
         return self.user is not None
 
     @property
-    def password_fixed(self) -> bool:
+    def password_in_keychain(self) -> bool:
         return self.password == KEYRING
+
+    @property
+    def plaintext_password(self) -> str | None:
+        """The password saved in the config file, or None if it is asked every time or kept in the keychain."""
+        return None if self.password is None or self.password == KEYRING else self.password
+
+    @property
+    def password_store(self) -> PasswordStore:
+        if self.password is None:
+            return "ask"
+        return "keychain" if self.password == KEYRING else "config"
 
     def to_json_dict(self) -> dict[str, Any]:
         data: dict[str, Any] = {

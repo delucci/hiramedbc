@@ -48,11 +48,11 @@ def test_doctor_exits_with_code_1_when_docker_command_is_missing(env, monkeypatc
     assert "not found on PATH" in result.output
 
 
-def test_doctor_detects_plaintext_password_without_showing_its_value(env):
+def test_doctor_accepts_plaintext_password_without_showing_its_value(env):
     env.write_config({"connections": {"prod": {"host": "db", "user": "app", "password": "TOPSECRET"}}})
     result = env.invoke(["dr"])
-    assert result.exit_code == 1
-    assert "plaintext password" in result.output
+    assert result.exit_code == 0, result.output
+    assert "1 connection(s)" in result.output
     assert "TOPSECRET" not in result.output
 
 
