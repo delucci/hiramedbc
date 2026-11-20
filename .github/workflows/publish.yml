@@ -1,26 +1,28 @@
 name: Publish to PyPI
 
+# Run manually from the Actions tab (Run workflow) after bumping the version in pyproject.toml.
+# The tag and GitHub Release (v<version>) are created automatically after a successful publish.
 on:
-  push:
-    tags: ["v*"]
+  workflow_dispatch:
 
 jobs:
   build:
+    # Only release from main
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     permissions:
       contents: read
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5
-      - name: Check that the tag matches the package version
+      - name: Check that the tag does not exist yet
         shell: bash
         run: |
-          version="$(uv version --short)"
-          if [ "v${version}" != "${GITHUB_REF_NAME}" ]; then
-            echo "Tag ${GITHUB_REF_NAME} does not match version ${version} in pyproject.toml" >&2
+          tag="v$(uv version --short)"
+          if git ls-remote --exit-code --tags origin "refs/tags/${tag}" >/dev/null; then
+            echo "Tag ${tag} already exists. Bump the version in pyproject.toml first." >&2
             exit 1
           fi
-      # Run the tests before publishing (a tag can point at any commit)
       - run: uv sync --locked
       - run: uv run pytest
       - run: uv build
@@ -42,3 +44,20 @@ jobs:
           name: dist
           path: dist/
       - uses: pypa/gh-action-pypi-publish@release/v1
+
+  release:
+    # Create the tag only after PyPI accepted the upload
+    needs: publish
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - name: Create the tag and GitHub Release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="v$(uv version --short)"
+          gh release create "${tag}" --target "${GITHUB_SHA}" --title "${tag}" --generate-notes
