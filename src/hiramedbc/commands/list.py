@@ -2,7 +2,7 @@ import typer
 from rich.markup import escape
 from rich.table import Table
 
-from hiramedbc.config.schema import ConnectionConfig
+from hiramedbc.config.schema import PASSWORD_STORE_ASK, PASSWORD_STORE_CONFIG, ConnectionConfig
 from hiramedbc.context import get_app_context
 from hiramedbc.secrets.keychain import Keychain
 from hiramedbc.utils import console as out
@@ -12,9 +12,11 @@ ASK = "[dim](ask every time)[/dim]"
 
 
 def _password_label(alias: str, conn: ConnectionConfig, keychain: Keychain) -> str:
-    """Show only whether the password is stored in the keychain, never its value."""
-    if not conn.password_fixed:
+    """Show only where the password is stored, never its value."""
+    if conn.password_store == PASSWORD_STORE_ASK:
         return ASK
+    if conn.password_store == PASSWORD_STORE_CONFIG:
+        return "config file"
     try:
         stored = keychain.get(alias) is not None
     except KeychainError:

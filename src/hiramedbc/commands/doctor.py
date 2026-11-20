@@ -9,7 +9,6 @@ import typer
 from rich.markup import escape
 
 from hiramedbc.config.schema import AppConfig
-from hiramedbc.config.validator import find_plaintext_passwords
 from hiramedbc.context import AppContext, get_app_context
 from hiramedbc.docker.image import AMD64, ImageManager, image_ref, resolve_arch
 from hiramedbc.docker.runner import container_name
@@ -126,29 +125,16 @@ def _check_config(app_ctx: AppContext) -> tuple[AppConfig | None, list[CheckResu
 
     results: list[CheckResult] = []
     try:
-        raw = manager.load_raw()
+        manager.load_raw()
     except ConfigError as e:
         return None, [CheckResult("Config file", Status.FAIL, e.message)]
 
-    plaintext = find_plaintext_passwords(raw)
     config: AppConfig | None = None
-    if plaintext:
-        results.append(
-            CheckResult(
-                "Config file",
-                Status.FAIL,
-                f"{location}: contains a plaintext password (connections: {', '.join(plaintext)}). "
-                'Leave it empty or set it to "keyring"',
-            )
-        )
-    else:
-        try:
-            config = manager.load()
-            results.append(
-                CheckResult("Config file", Status.OK, f"{location} ({len(config.connections)} connection(s))")
-            )
-        except ConfigError as e:
-            results.append(CheckResult("Config file", Status.FAIL, e.message))
+    try:
+        config = manager.load()
+        results.append(CheckResult("Config file", Status.OK, f"{location} ({len(config.connections)} connection(s))"))
+    except ConfigError as e:
+        results.append(CheckResult("Config file", Status.FAIL, e.message))
 
     if not is_windows():
         if manager.is_readable_by_others():
@@ -178,7 +164,7 @@ def _check_keychain(app_ctx: AppContext, config: AppConfig | None) -> list[Check
     if config is None:
         return results
     for alias, conn in config.connections.items():
-        if not conn.password_fixed:
+        if not conn.password_in_keychain:
             continue
         try:
             stored = app_ctx.keychain.get(alias) is not None

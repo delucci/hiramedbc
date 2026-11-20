@@ -73,7 +73,7 @@ class ScriptedPrompter:
         left = {"texts": self.texts, "secrets": self.secrets, "confirms": self.confirms, "choices": self.choices}
         return {k: v for k, v in left.items() if v}
 
-    def choose(self, message, choices, *, default):
+    def choose(self, message, choices, *, default, labels=None):
         self.asked.append(message)
         value = self.choices.pop(0) if self.choices else default
         assert value in choices

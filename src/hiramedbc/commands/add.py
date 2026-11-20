@@ -11,6 +11,9 @@ from hiramedbc.commands.common import find_case_conflict
 from hiramedbc.config.schema import (
     DEFAULT_PORT,
     KEYRING,
+    PASSWORD_STORE_ASK,
+    PASSWORD_STORE_CONFIG,
+    PASSWORD_STORE_KEYCHAIN,
     SSL_MODES,
     AppConfig,
     ConnectionConfig,
@@ -28,6 +31,12 @@ CLEAR = "-"
 
 SUGGESTED_VERSION = "8.4"
 
+PASSWORD_STORE_LABELS = {
+    PASSWORD_STORE_ASK: "Don't save (ask every time)",
+    PASSWORD_STORE_CONFIG: "Save in the config file (plaintext)",
+    PASSWORD_STORE_KEYCHAIN: "Save in the OS keychain",
+}
+
 NO_SSL_MODE = "DEFAULT"
 """Choice for not setting an SSL mode (leave it to the MySQL client default)."""
 
@@ -37,7 +46,9 @@ class ConnectionDraft:
     name: str
     conn: ConnectionConfig
     new_password: str | None = field(default=None, repr=False)
-    """New password to store in the keychain. None keeps the saved one unchanged."""
+    """New password to store in the keychain. None keeps the saved one unchanged.
+
+    A password saved in the config file is not held here; it is already in `conn.password`."""
 
 
 def _validate_name(config: AppConfig, name: str, current_name: str | None) -> None:
@@ -87,13 +98,21 @@ def _ask_port(prompter: Prompter, current: ConnectionConfig | None) -> int:
         out.warn("Enter an integer from 1 to 65535.")
 
 
-def _ask_new_password(prompter: Prompter, name: str) -> str | None:
+def _ask_new_password(prompter: Prompter, name: str, *, destination: str, plaintext: bool = False) -> str | None:
+    """Ask for a password twice. With `plaintext`, values that cannot be stored in the config file are rejected."""
     for _ in range(3):
-        first = prompter.ask_secret(f"Password for {name} (saved in keychain)")
+        first = prompter.ask_secret(f"Password for {name} (saved in {destination})")
         second = prompter.ask_secret("Confirm password")
-        if first == second:
+        if first != second:
+            out.warn("Passwords do not match.")
+        elif plaintext and first.strip() == "":
+            out.warn("An empty password cannot be saved in the config file.")
+            return None
+        elif plaintext and first == KEYRING:
+            out.warn(f'The password "{KEYRING}" cannot be saved in the config file (reserved word).')
+            return None
+        else:
             return first
-        out.warn("Passwords do not match.")
     return None
 
 
@@ -181,24 +200,45 @@ def prompt_connection(
     password: str | None = None
     new_password: str | None = None
     # If the user name is asked every time, the password cannot be saved (config validation also rejects it)
-    if user_fixed and prompter.confirm(
-        "Save the password in the keychain? (no: ask every time)",
-        default=current.password_fixed if current else False,
-    ):
-        has_stored = current is not None and current.password_fixed
+    if user_fixed:
+        store = prompter.choose(
+            "Where to save the password?",
+            [PASSWORD_STORE_ASK, PASSWORD_STORE_CONFIG, PASSWORD_STORE_KEYCHAIN],
+            default=current.password_store if current else PASSWORD_STORE_ASK,
+            labels=PASSWORD_STORE_LABELS,
+        )
         # If the user name changed, the saved password belongs to the old user, so default to changing it
         user_changed = current is not None and current.user != user
-        if has_stored and not prompter.confirm("Change the saved password?", default=user_changed):
-            password = KEYRING
-        else:
-            new_password = _ask_new_password(prompter, name)
-            if new_password is not None:
-                password = KEYRING
-            elif has_stored:
-                out.warn("Keeping the saved password.")
+        if store == PASSWORD_STORE_KEYCHAIN:
+            has_stored = current is not None and current.password_in_keychain
+            if has_stored and not prompter.confirm("Change the saved password?", default=user_changed):
                 password = KEYRING
             else:
-                out.warn("Password not saved. It will be asked every time.")
+                new_password = _ask_new_password(prompter, name, destination="keychain")
+                if new_password is not None:
+                    password = KEYRING
+                elif has_stored:
+                    out.warn("Keeping the saved password.")
+                    password = KEYRING
+                elif current is not None and current.plaintext_password is not None:
+                    out.warn("Keeping the saved password in the config file.")
+                    password = current.plaintext_password
+                else:
+                    out.warn("Password not saved. It will be asked every time.")
+        elif store == PASSWORD_STORE_CONFIG:
+            saved_plaintext = current.plaintext_password if current else None
+            if saved_plaintext is not None and not prompter.confirm("Change the saved password?", default=user_changed):
+                password = saved_plaintext
+            else:
+                password = _ask_new_password(prompter, name, destination="config file", plaintext=True)
+                if password is None and saved_plaintext is not None:
+                    out.warn("Keeping the saved password.")
+                    password = saved_plaintext
+                elif password is None and current is not None and current.password_in_keychain:
+                    out.warn("Keeping the saved password in the keychain.")
+                    password = KEYRING
+                elif password is None:
+                    out.warn("Password not saved. It will be asked every time.")
 
     version = _ask_version(prompter, config, current)
     ssl = _ask_ssl(prompter, current)
@@ -225,7 +265,7 @@ def save_connection(
 
     stored_new = False
     previous_password: str | None = None
-    had_stored = old_conn is not None and old_conn.password_fixed
+    had_stored = old_conn is not None and old_conn.password_in_keychain
     if draft.new_password is not None:
         try:
             if had_stored and old_name == draft.name:
@@ -237,6 +277,9 @@ def save_connection(
             if had_stored:
                 # Keep using the saved password (on rename, the old entry is moved after saving)
                 out.warn(f"{e.message} Keeping the saved password.")
+            elif old_conn is not None and old_conn.plaintext_password is not None:
+                out.warn(f"{e.message} Keeping the saved password in the config file.")
+                conn = conn.model_copy(update={"password": old_conn.plaintext_password})
             else:
                 out.warn(f"{e.message} The password will be asked every time.")
                 conn = conn.model_copy(update={"password": None})
@@ -260,8 +303,8 @@ def save_connection(
                 _try_keychain(lambda: keychain.delete(draft.name))
         raise
 
-    if old_name and old_conn and old_conn.password_fixed:
-        if not conn.password_fixed:
+    if old_name and old_conn and old_conn.password_in_keychain:
+        if not conn.password_in_keychain:
             _try_keychain(lambda: keychain.delete(old_name))
         elif old_name != draft.name:
             if stored_new:

@@ -39,6 +39,17 @@ def test_connect_passes_keychain_password_via_option_file(env):
     assert env.option_file() == '[client]\nhost="db.example.com"\nport=3307\nuser="app"\npassword="TOPSECRET"\n'
 
 
+def test_connect_passes_plaintext_config_password_via_option_file_without_asking(env):
+    env.write_config({"connections": {"p": {"host": "h", "user": "app", "password": "PLAIN", "version": "8.4"}}})
+    prompter = ScriptedPrompter()
+    result = env.invoke(["c", "p"], prompter)
+    assert result.exit_code == 0, result.output
+    assert env.option_file() == '[client]\nhost="h"\nport=3306\nuser="app"\npassword="PLAIN"\n'
+    assert prompter.asked == []
+    assert all("PLAIN" not in " ".join(call) for call in env.docker.calls)
+    assert "PLAIN" not in result.output
+
+
 def test_connect_does_not_expose_password_in_docker_args_or_output(env):
     result = env.invoke(["c", "prod"])
     assert all("TOPSECRET" not in " ".join(call) for call in env.docker.calls)

@@ -87,3 +87,25 @@ def test_prompts_even_with_square_brackets_in_user_name(memory_keyring):
     creds = _resolve(ConnectionConfig(host="h", user="x[/y]"), Keychain(memory_keyring), prompter)
     assert creds.user == "x[/y]"
     assert "x\\[/y]" in prompter.asked[0]
+
+
+def test_uses_plaintext_password_from_config_without_asking(memory_keyring):
+    prompter = ScriptedPrompter()
+    creds = _resolve(ConnectionConfig(host="h", user="app", password="in-config"), Keychain(memory_keyring), prompter)
+    assert (creds.user, creds.password, prompter.asked) == ("app", "in-config", [])
+
+
+def test_ask_password_overrides_plaintext_password_in_config(memory_keyring):
+    prompter = ScriptedPrompter(secrets=["typed"])
+    creds = _resolve(
+        ConnectionConfig(host="h", user="app", password="in-config"),
+        Keychain(memory_keyring),
+        prompter,
+        ask_password=True,
+    )
+    assert creds.password == "typed"
+
+
+def test_plaintext_password_does_not_touch_keychain(memory_keyring):
+    _resolve(ConnectionConfig(host="h", user="app", password="in-config"), Keychain(memory_keyring), ScriptedPrompter())
+    assert memory_keyring.store == {}
