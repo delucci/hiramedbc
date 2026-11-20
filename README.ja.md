@@ -27,7 +27,7 @@ Python と git を別途インストールする必要はありません（uv �
 
 ```bash
 uv tool install hiramedbc            # インストール
-uv tool install hiramedbc==0.1.0     # バージョンを固定する場合
+uv tool install hiramedbc==0.1.1     # バージョンを固定する場合
 uv tool upgrade hiramedbc            # 更新
 uv tool uninstall hiramedbc          # 削除
 uvx --from hiramedbc hirame          # インストールせずに一時実行
@@ -158,7 +158,7 @@ uv run pytest                                   # テスト
 uv run ruff check . && uv run ruff format --check .
 ```
 
-- リリース: `v*` タグを push すると、GitHub Actions の Trusted Publishing で PyPI に公開されます（API トークンはリポジトリに保存しません）。
+- リリース: `pyproject.toml` の `version` を上げて main にマージし、Actions タブから「Publish to PyPI」を手動実行します。Trusted Publishing で PyPI に公開され（API トークンはリポジトリに保存しません）、その後 `v<version>` のタグと GitHub Release が自動で作成されます。
 
 ## ライセンス
 
