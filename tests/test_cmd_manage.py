@@ -11,18 +11,19 @@ def env(tmp_path, monkeypatch):
     return env
 
 
-def _add_answers(name="prod", user_fixed=True, save_password=True, password="pw", version="", ssl=False):
+def _add_answers(name="prod", user_fixed=True, store="keychain", password="pw", version="", ssl=False):
     texts = [name, "db.example.com", "3306"]
     confirms = [user_fixed]
     secrets = []
+    choices = []
     if user_fixed:
         texts.append("app")
-        confirms.append(save_password)
-        if save_password:
+        choices.append(store)
+        if store != "ask":
             secrets = [password, password]
     texts.append(version)
     confirms.append(ssl)
-    return ScriptedPrompter(texts=texts, secrets=secrets, confirms=confirms)
+    return ScriptedPrompter(texts=texts, secrets=secrets, confirms=confirms, choices=choices)
 
 
 # --- add ---
@@ -50,7 +51,7 @@ def test_add_with_user_asked_every_time_also_asks_password_every_time(env):
     env.invoke(["add"], prompter)
     conn = env.read_config()["connections"]["prod"]
     assert (conn["user"], conn["password"]) == ("", "")
-    assert not any("Save the password in the keychain?" in q for q in prompter.asked)
+    assert not any("Where to save the password?" in q for q in prompter.asked)
 
 
 def test_add_saves_entered_version_to_connection(env):
@@ -66,7 +67,10 @@ def test_add_asks_version_with_suggestion_when_no_default(env):
 
 def test_add_asks_again_when_password_confirmation_does_not_match(env):
     prompter = ScriptedPrompter(
-        texts=["prod", "h", "3306", "app", ""], secrets=["a", "b", "pw", "pw"], confirms=[True, True, False]
+        texts=["prod", "h", "3306", "app", ""],
+        secrets=["a", "b", "pw", "pw"],
+        confirms=[True, False],
+        choices=["keychain"],
     )
     env.invoke(["add"], prompter)
     assert env.keychain.get("prod") == "pw"
@@ -132,20 +136,24 @@ def registered(env):
     return env
 
 
-def _edit_answers(name="prod", keep_password=True, version="", user_fixed=True, save_password=True):
+def _edit_answers(name="prod", keep_password=True, version="", user_fixed=True, save_password=True, store=None):
+    store = store or ("keychain" if save_password else "ask")
     texts = [name, "", ""]  # empty = keep the current value
     confirms = [user_fixed]
     secrets = []
+    choices = []
     if user_fixed:
         texts.append("")
-        confirms.append(save_password)
-        if save_password:
+        choices.append(store)
+        if store == "keychain":  # the connection under edit has a saved keychain password
             confirms.append(not keep_password)
             if not keep_password:
                 secrets = ["new", "new"]
+        elif store == "config":
+            secrets = ["new", "new"]
     texts.append(version)
     confirms.append(False)
-    return ScriptedPrompter(texts=texts, secrets=secrets, confirms=confirms)
+    return ScriptedPrompter(texts=texts, secrets=secrets, confirms=confirms, choices=choices)
 
 
 def test_edit_with_only_enter_keeps_everything_unchanged(registered):
@@ -296,7 +304,8 @@ def test_edit_keeps_saved_password_when_confirmation_mismatches_three_times(regi
     prompter = ScriptedPrompter(
         texts=["prod", "", "", "", ""],
         secrets=["a", "b", "c", "d", "e", "f"],
-        confirms=[True, True, True, False],  # save user / save password / change it / no SSL
+        confirms=[True, True, False],  # save user / change saved password / no SSL
+        choices=["keychain"],
     )
     registered.invoke(["e", "prod"], prompter)
     assert registered.read_config()["connections"]["prod"]["password"] == "keyring"
@@ -311,7 +320,8 @@ def test_edit_does_not_add_ssl_mode_when_left_unset(registered, tmp_path):
     registered.write_config(config)
     prompter = ScriptedPrompter(
         texts=["prod", "", "", "", "", "", "", ""],
-        confirms=[True, True, False, True],  # save user / save password / keep it / use SSL
+        confirms=[True, False, True],  # save user / keep saved password / use SSL
+        choices=["keychain", "DEFAULT"],
     )
     registered.invoke(["e", "prod"], prompter)
     assert registered.read_config()["connections"]["prod"]["ssl"] == {"ca": str(ca)}
@@ -367,3 +377,151 @@ def test_edit_rejects_case_only_rename_and_asks_again(registered):
     assert "Cannot change only the case of a connection name" in result.output
     assert list(registered.read_config()["connections"]) == ["first", "prod", "last"]
     assert registered.keychain.get("prod") == "stored"
+
+
+# --- password saved in the config file ---
+
+
+def test_add_with_config_store_saves_plaintext_password_in_config_file_only(env):
+    result = env.invoke(["add"], _add_answers(store="config", password="pw"))
+    assert result.exit_code == 0, result.output
+    assert env.read_config()["connections"]["prod"]["password"] == "pw"
+    assert env.backend.store == {}
+
+
+def test_add_with_config_store_asks_again_when_confirmation_does_not_match(env):
+    prompter = _add_answers(store="config", password="pw")
+    prompter.secrets[:0] = ["a", "b"]
+    env.invoke(["add"], prompter)
+    assert env.read_config()["connections"]["prod"]["password"] == "pw"
+
+
+def test_add_with_config_store_does_not_save_reserved_word_keyring_as_password(env):
+    result = env.invoke(["add"], _add_answers(store="config", password="keyring"))
+    assert result.exit_code == 0, result.output
+    assert env.read_config()["connections"]["prod"]["password"] == ""
+    assert "reserved word" in result.output
+
+
+def test_add_with_config_store_does_not_save_empty_password(env):
+    result = env.invoke(["add"], _add_answers(store="config", password=""))
+    assert result.exit_code == 0, result.output
+    assert env.read_config()["connections"]["prod"]["password"] == ""
+    assert "empty password cannot be saved" in result.output
+
+
+def test_add_with_user_asked_every_time_does_not_offer_config_store(env):
+    prompter = _add_answers(user_fixed=False)
+    env.invoke(["add"], prompter)
+    assert env.read_config()["connections"]["prod"]["password"] == ""
+
+
+def _registered_with_plaintext(registered):
+    config = registered.read_config()
+    config["connections"]["prod"]["password"] = "old"
+    registered.write_config(config)
+    registered.keychain.delete("prod")
+
+
+def test_edit_keeps_plaintext_password_when_not_changed(registered):
+    _registered_with_plaintext(registered)
+    prompter = ScriptedPrompter(
+        texts=["prod", "", "", "", ""],
+        confirms=[True, False, False],  # save user / keep saved password / no SSL
+        choices=["config"],
+    )
+    registered.invoke(["e", "prod"], prompter)
+    assert registered.read_config()["connections"]["prod"]["password"] == "old"
+
+
+def test_edit_changes_plaintext_password(registered):
+    _registered_with_plaintext(registered)
+    prompter = ScriptedPrompter(
+        texts=["prod", "", "", "", ""],
+        secrets=["new", "new"],
+        confirms=[True, True, False],  # save user / change saved password / no SSL
+        choices=["config"],
+    )
+    registered.invoke(["e", "prod"], prompter)
+    assert registered.read_config()["connections"]["prod"]["password"] == "new"
+
+
+def test_edit_switching_from_keychain_to_config_moves_password_and_deletes_keychain_entry(registered):
+    registered.invoke(["e", "prod"], _edit_answers(store="config"))
+    assert registered.read_config()["connections"]["prod"]["password"] == "new"
+    assert registered.keychain.get("prod") is None
+
+
+def test_edit_switching_from_config_to_keychain_saves_to_keychain_and_removes_plaintext(registered):
+    _registered_with_plaintext(registered)
+    prompter = ScriptedPrompter(
+        texts=["prod", "", "", "", ""],
+        secrets=["new", "new"],
+        confirms=[True, False],  # save user / no SSL
+        choices=["keychain"],
+    )
+    registered.invoke(["e", "prod"], prompter)
+    assert registered.read_config()["connections"]["prod"]["password"] == "keyring"
+    assert registered.keychain.get("prod") == "new"
+
+
+def test_edit_switching_from_config_to_ask_every_time_removes_plaintext_password(registered):
+    _registered_with_plaintext(registered)
+    registered.invoke(["e", "prod"], _edit_answers(store="ask"))
+    assert registered.read_config()["connections"]["prod"]["password"] == ""
+
+
+def test_list_shows_config_file_store_without_password_value(registered):
+    config = registered.read_config()
+    config["connections"]["prod"]["password"] = "PLAINSECRET"
+    registered.write_config(config)
+    registered.keychain.delete("prod")
+    result = registered.invoke(["ls"])
+    assert result.exit_code == 0, result.output
+    assert "config file" in result.output
+    assert "PLAINSECRET" not in result.output
+
+
+@pytest.mark.parametrize(
+    "secrets",
+    [["", ""], ["keyring", "keyring"], ["a", "b", "c", "d", "e", "f"]],
+    ids=["empty", "reserved-word", "mismatch"],
+)
+def test_edit_keychain_to_config_keeps_keychain_password_when_new_password_is_unusable(registered, secrets):
+    prompter = ScriptedPrompter(
+        texts=["prod", "", "", "", ""],
+        secrets=secrets,
+        confirms=[True, False],  # save user / no SSL
+        choices=["config"],
+    )
+    registered.invoke(["e", "prod"], prompter)
+    assert registered.read_config()["connections"]["prod"]["password"] == "keyring"
+    assert registered.keychain.get("prod") == "stored"
+
+
+def test_edit_config_to_keychain_keeps_plaintext_password_when_keychain_save_fails(registered):
+    from hiramedbc.secrets.keychain import Keychain
+
+    _registered_with_plaintext(registered)
+    registered.keychain = Keychain(LockedKeyring())
+    prompter = ScriptedPrompter(
+        texts=["prod", "", "", "", ""],
+        secrets=["new", "new"],
+        confirms=[True, False],  # save user / no SSL
+        choices=["keychain"],
+    )
+    registered.invoke(["e", "prod"], prompter)
+    assert registered.read_config()["connections"]["prod"]["password"] == "old"
+
+
+def test_edit_config_to_keychain_with_rename_moves_password_to_new_keychain_entry(registered):
+    _registered_with_plaintext(registered)
+    prompter = ScriptedPrompter(
+        texts=["production", "", "", "", ""],
+        secrets=["new", "new"],
+        confirms=[True, False],  # save user / no SSL
+        choices=["keychain"],
+    )
+    registered.invoke(["e", "prod"], prompter)
+    assert registered.read_config()["connections"]["production"]["password"] == "keyring"
+    assert registered.keychain.get("production") == "new"

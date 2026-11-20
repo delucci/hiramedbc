@@ -60,21 +60,3 @@ def parse_config(raw: Any, *, source: str = "config file") -> AppConfig:
         except ConfigError as e:
             raise ConfigError(f"{source}: {e.message}", hint=e.hint) from None
     return config
-
-
-def find_plaintext_passwords(raw: Any) -> list[str]:
-    """Return the names of connections with a plaintext password (for doctor). Never returns the values."""
-    if not isinstance(raw, dict) or not isinstance(raw.get("connections"), dict):
-        return []
-    names = []
-    for name, conn in raw["connections"].items():
-        if not isinstance(conn, dict):
-            continue
-        password = conn.get("password")
-        # Same rule as the schema: anything other than empty (null or whitespace-only) or "keyring" is plaintext
-        if password is None or password == "keyring":
-            continue
-        if isinstance(password, str) and password.strip() == "":
-            continue
-        names.append(str(name))
-    return names

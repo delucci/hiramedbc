@@ -10,7 +10,7 @@
     "staging": {
       "host": "stg-db.example.com",
       "port": 3306,
-      "user": "",
+      "user": "app_user",
       "password": ""
     },
     "production": {
