@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "hiramedbc"
-version = "0.1.0"
+version = "0.1.1"
 description = "A CLI for switching between MySQL client versions using the official MySQL Docker image"
 readme = "README.md"
 license = "MIT"
